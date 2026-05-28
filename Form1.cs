@@ -6,7 +6,6 @@ using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Newtonsoft.Json;
-using LibreHardwareMonitor.Hardware;
 using Newtonsoft.Json.Linq;
 
 using Timer = System.Windows.Forms.Timer;
@@ -20,10 +19,10 @@ namespace FloatingStatusMonitor
         public string TextColor { get; set; } = "#FFFFFF";
         public string BackColor { get; set; } = "#000000";
         public double Opacity { get; set; } = 0.8;
-        public int WindowWidth { get; set; } = 220;
-        public int WindowHeight { get; set; } = 100;
-        public int WindowX { get; set; } = 20;
-        public int WindowY { get; set; } = 20;
+        public int WindowWidth { get; set; } = 330;
+        public int WindowHeight { get; set; } = 24;
+        public int WindowX { get; set; } = 690;
+        public int WindowY { get; set; } = 4;
         
         // CPU Color Settings
         public string CpuHighBgColor { get; set; } = "#0000FF"; // Blue for >95-99%
@@ -51,13 +50,13 @@ namespace FloatingStatusMonitor
         public const int WM_NCLBUTTONDOWN = 0xA1;
         public const int HT_CAPTION = 0x2;
 
-        // private Label cpuLabel, ram1Label, ram2Label, tempLabel;
         private Timer updateTimer;
-        private Computer computer;
         private Config config;
         private FileSystemWatcher watcher;
         private NotifyIcon trayIcon;
-        private Label? cpuLabel, ram1Label, ram2Label, tempLabel; // Nullable
+        private Label? statusLabel;
+        private PerformanceCounter? diskCounter;
+        private bool windowVisible;
         private string exeDir = AppContext.BaseDirectory;
         private string ConfigPath;
         // private string path = Path.Combine(exeDir, "config.json");
@@ -72,7 +71,22 @@ namespace FloatingStatusMonitor
         {
             ConfigPath = Path.Combine(exeDir, "config.json");
 
-            this.Load += (s, e) => ApplyConfig();
+            this.Load += (s, e) =>
+            {
+                ApplyConfig();
+                // Clamp initial position to visible screen area
+                var screen = Screen.GetWorkingArea(this);
+                this.Location = new Point(
+                    Math.Max(0, Math.Min(this.Location.X, screen.Width - this.Width)),
+                    Math.Max(0, Math.Min(this.Location.Y, screen.Height - this.Height))
+                );
+                // Start hidden in tray after form handle is created
+                windowVisible = false;
+                this.WindowState = FormWindowState.Minimized;
+                this.ShowInTaskbar = false;
+                this.Hide();
+                trayIcon.ShowBalloonTip(2000, "Floating Status Monitor", "Running in system tray — left-click to show window", ToolTipIcon.Info);
+            };
 
             config = LoadConfigFromDisk();
 
@@ -87,16 +101,17 @@ namespace FloatingStatusMonitor
 
             CreateLabels();
 
-            computer = new Computer { IsCpuEnabled = true };
-            computer.Open();
-
+            Icon trayIconImage = SystemIcons.Information;
             trayIcon = new NotifyIcon
             {
-                Icon = SystemIcons.Application,
+                Icon = trayIconImage,
                 Visible = true,
                 Text = "Floating Status Monitor"
             };
             var menu = new ContextMenuStrip();
+            var toggleItem = new ToolStripMenuItem("Show Window");
+            toggleItem.Click += (s, e) => ToggleWindow();
+            menu.Items.Add(toggleItem);
             menu.Items.Add("Save Geometry", null, (s, e) => SaveCurrentGeometry());
             menu.Items.Add("Exit", null, (s, e) => 
             {
@@ -104,6 +119,12 @@ namespace FloatingStatusMonitor
                 Application.Exit();
             });
             trayIcon.ContextMenuStrip = menu;
+            trayIcon.MouseClick += (s, e) =>
+            {
+                if (e.Button == MouseButtons.Left)
+                    ToggleWindow();
+            };
+
 
             updateTimer = new Timer { Interval = 1000 };
             updateTimer.Tick += UpdateStats;
@@ -133,51 +154,16 @@ namespace FloatingStatusMonitor
 
         private void CreateLabels()
         {
-            int lineHeight = 20;
-            
-            cpuLabel = new Label
+            statusLabel = new Label
             {
                 AutoSize = false,
-                Size = new Size(200, lineHeight),
-                Location = new Point(5, 5),
+                Size = new Size(320, 24),
+                Location = new Point(5, 0),
                 BackColor = Color.Transparent,
                 TextAlign = ContentAlignment.MiddleLeft
             };
-            cpuLabel.MouseDown += Form1_MouseDown;
-            this.Controls.Add(cpuLabel);
-
-            ram1Label = new Label
-            {
-                AutoSize = false,
-                Size = new Size(200, lineHeight),
-                Location = new Point(5, 25),
-                BackColor = Color.Transparent,
-                TextAlign = ContentAlignment.MiddleLeft
-            };
-            ram1Label.MouseDown += Form1_MouseDown;
-            this.Controls.Add(ram1Label);
-
-            ram2Label = new Label
-            {
-                AutoSize = false,
-                Size = new Size(200, lineHeight),
-                Location = new Point(5, 45),
-                BackColor = Color.Transparent,
-                TextAlign = ContentAlignment.MiddleLeft
-            };
-            ram2Label.MouseDown += Form1_MouseDown;
-            this.Controls.Add(ram2Label);
-
-            tempLabel = new Label
-            {
-                AutoSize = false,
-                Size = new Size(200, lineHeight),
-                Location = new Point(5, 65),
-                BackColor = Color.Transparent,
-                TextAlign = ContentAlignment.MiddleLeft
-            };
-            tempLabel.MouseDown += Form1_MouseDown;
-            this.Controls.Add(tempLabel);
+            statusLabel.MouseDown += Form1_MouseDown;
+            this.Controls.Add(statusLabel);
         }
 
         private void Form1_MouseDown(object? sender, MouseEventArgs e)
@@ -254,10 +240,7 @@ namespace FloatingStatusMonitor
             this.Location = new Point(config.WindowX, config.WindowY);
             this.BackColor = ColorTranslator.FromHtml(config.BackColor);
             
-            if (cpuLabel != null) cpuLabel.Font = font;
-            if (ram1Label != null) ram1Label.Font = font;
-            if (ram2Label != null) ram2Label.Font = font;
-            if (tempLabel != null) tempLabel.Font = font;
+            if (statusLabel != null) statusLabel.Font = font;
         }
 
         private Color GetColorForRamOrTemp(float value)
@@ -281,67 +264,70 @@ namespace FloatingStatusMonitor
 
         private void UpdateStats(object? sender, EventArgs e)
         {
-            float cpu = GetCpuUsage();
-            float ram_counter = GetMemoryUsage();
-            float ram = GetRamViaGlobalMemoryStatusEx();
-            float temp = GetCpuTemperature();
+            // Read stats on background thread so UI stays responsive
+            Task.Run(() =>
+            {
+                float cpu = GetCpuUsage();
+                float ram = GetRamViaGlobalMemoryStatusEx();
+                float disk = GetDiskActivity();
+                
+                this.Invoke((Action)(() => UpdateUI(cpu, ram, disk)));
+            });
+        }
 
-            // CPU color logic - affects entire form background
-            Color formBackgroundColor = ColorTranslator.FromHtml(config.BackColor);
-            Color defaultTextColor = ColorTranslator.FromHtml(config.TextColor);
-            
+        private void UpdateUI(float cpu, float ram, float disk)
+        {
+            string statusText = $"CPU {cpu,5:F1}%  | RAM {ram,5:F1}%  | DSK {disk,5:F1}%";
+
+            Color bgColor = ColorTranslator.FromHtml(config.BackColor);
+            Color textColor = ColorTranslator.FromHtml(config.TextColor);
+
             if (cpu >= 99)
             {
-                formBackgroundColor = ColorTranslator.FromHtml(config.CpuCriticalBgColor);
-                defaultTextColor = ColorTranslator.FromHtml(config.CpuCriticalTextColor);
+                bgColor = ColorTranslator.FromHtml(config.CpuCriticalBgColor);
+                textColor = ColorTranslator.FromHtml(config.CpuCriticalTextColor);
             }
-            else if (cpu > 95 && cpu <= 99)
+            else if (cpu > 95)
             {
-                formBackgroundColor = ColorTranslator.FromHtml(config.CpuHighBgColor);
-                defaultTextColor = ColorTranslator.FromHtml(config.CpuHighTextColor);
+                bgColor = ColorTranslator.FromHtml(config.CpuHighBgColor);
+                textColor = ColorTranslator.FromHtml(config.CpuHighTextColor);
             }
 
-            this.BackColor = formBackgroundColor;
-            
-            // Update CPU label
-            cpuLabel.Text = $"CPU  : {cpu:F1}%";
-            cpuLabel.ForeColor = defaultTextColor;
-            cpuLabel.BackColor = Color.Transparent;
-            
-            // // Update RAM 1 label with individual coloring
-            // ram1Label.Text = $"RAM 1: {ram:F1}%";
-            // ram1Label.ForeColor = GetColorForRamOrTemp(ram);
-            // ram1Label.BackColor = GetBackgroundForRamOrTemp(ram);
-            
-            // // Update RAM 2 label with individual coloring
-            // ram2Label.Text = $"RAM 2: {ram_counter:F1}%";
-            // ram2Label.ForeColor = GetColorForRamOrTemp(ram_counter);
-            // ram2Label.BackColor = GetBackgroundForRamOrTemp(ram_counter);
-            
-            // // Update TEMP label with individual coloring
-            // tempLabel.Text = $"TEMP : {temp:F1}°C";
-            // tempLabel.ForeColor = GetColorForRamOrTemp(temp);
-            // tempLabel.BackColor = GetBackgroundForRamOrTemp(temp);
+            if (statusLabel != null)
+            {
+                statusLabel.Text = statusText;
+                statusLabel.ForeColor = textColor;
+            }
 
-            bool cpuInHighState = cpu >= 99 || (cpu > 95 && cpu <= 99);
+            this.BackColor = bgColor;
+            trayIcon.Text = $"CPU {cpu:F1}% | RAM {ram:F1}% | DSK {disk:F1}%";
+        }
 
-            // Update RAM 1 label
-            ram1Label.Text = $"RAM 1: {ram:F1}%";
-            ram1Label.ForeColor = cpuInHighState ? defaultTextColor : GetColorForRamOrTemp(ram);
-            ram1Label.BackColor = cpuInHighState ? Color.Transparent : GetBackgroundForRamOrTemp(ram);
+        private void ToggleWindow()
+        {
+            windowVisible = !windowVisible;
+            if (windowVisible)
+            {
+                // Clamp window to screen bounds
+                var screen = Screen.GetWorkingArea(this);
+                this.Location = new Point(
+                    Math.Max(0, Math.Min(this.Location.X, screen.Width - this.Width)),
+                    Math.Max(0, Math.Min(this.Location.Y, screen.Height - this.Height))
+                );
 
-            // Update RAM 2 label
-            ram2Label.Text = $"RAM 2: {ram_counter:F1}%";
-            ram2Label.ForeColor = cpuInHighState ? defaultTextColor : GetColorForRamOrTemp(ram_counter);
-            ram2Label.BackColor = cpuInHighState ? Color.Transparent : GetBackgroundForRamOrTemp(ram_counter);
-
-            // Update TEMP label
-            tempLabel.Text = $"TEMP : {temp:F1}°C";
-            tempLabel.ForeColor = cpuInHighState ? defaultTextColor : GetColorForRamOrTemp(temp);
-            tempLabel.BackColor = cpuInHighState ? Color.Transparent : GetBackgroundForRamOrTemp(temp);
-
-
-            trayIcon.Text = $"CPU {cpu:F1}% | RAM {ram:F1}% | TEMP {temp:F1}°C";
+                this.WindowState = FormWindowState.Normal;
+                this.ShowInTaskbar = true;
+                this.Show();
+                this.BringToFront();
+                (trayIcon.ContextMenuStrip.Items[0] as ToolStripMenuItem).Text = "Hide Window";
+            }
+            else
+            {
+                this.WindowState = FormWindowState.Minimized;
+                this.ShowInTaskbar = false;
+                this.Hide();
+                (trayIcon.ContextMenuStrip.Items[0] as ToolStripMenuItem).Text = "Show Window";
+            }
         }
 
         private float GetRamViaGlobalMemoryStatusEx()
@@ -376,21 +362,23 @@ namespace FloatingStatusMonitor
             return memCounter.NextValue();
         }
 
-        private float GetCpuTemperature()
+        private float GetDiskActivity()
         {
-            foreach (var hw in computer.Hardware)
+            try
             {
-                if (hw.HardwareType == HardwareType.Cpu)
+                if (diskCounter == null)
                 {
-                    hw.Update();
-                    foreach (var sensor in hw.Sensors)
-                    {
-                        if (sensor.SensorType == SensorType.Temperature && sensor.Value.HasValue)
-                            return sensor.Value.Value;
-                    }
+                    diskCounter = new PerformanceCounter("PhysicalDisk", "% Disk Time", "_Total");
+                    diskCounter.NextValue();
+                    System.Threading.Thread.Sleep(100);
                 }
+                float val = diskCounter.NextValue();
+                return val > 100 ? 100 : val;
             }
-            return 0;
+            catch
+            {
+                return 0;
+            }
         }
 
         // private void SaveCurrentGeometry()
