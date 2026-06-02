@@ -19,7 +19,7 @@ namespace FloatingStatusMonitor
         public string TextColor { get; set; } = "#FFFFFF";
         public string BackColor { get; set; } = "#000000";
         public double Opacity { get; set; } = 0.8;
-        public int WindowWidth { get; set; } = 248;
+        public int WindowWidth { get; set; } = 260;
         public int WindowHeight { get; set; } = 24;
         public int WindowX { get; set; } = 690;
         public int WindowY { get; set; } = 4;
@@ -156,52 +156,38 @@ namespace FloatingStatusMonitor
 
         private void CreateLabels()
         {
-            FlowLayoutPanel panel = new FlowLayoutPanel
-            {
-                FlowDirection = FlowDirection.LeftToRight,
-                Location = new Point(5, 0),
-                Size = new Size(240, 24),
-                BackColor = Color.Transparent,
-                Padding = new Padding(0),
-                Margin = new Padding(0),
-                WrapContents = false
-            };
-            panel.MouseDown += Form1_MouseDown;
-
             cpuLabel = new Label
             {
                 AutoSize = true,
+                Location = new Point(4, 0),
                 BackColor = Color.Transparent,
                 TextAlign = ContentAlignment.MiddleLeft,
-                Padding = new Padding(0),
-                Margin = new Padding(0)
+                Padding = new Padding(0)
             };
             cpuLabel.MouseDown += Form1_MouseDown;
-            panel.Controls.Add(cpuLabel);
+            this.Controls.Add(cpuLabel);
 
             ramLabel = new Label
             {
                 AutoSize = true,
+                Location = new Point(4, 0),
                 BackColor = Color.Transparent,
                 TextAlign = ContentAlignment.MiddleLeft,
-                Padding = new Padding(0),
-                Margin = new Padding(0)
+                Padding = new Padding(0)
             };
             ramLabel.MouseDown += Form1_MouseDown;
-            panel.Controls.Add(ramLabel);
+            this.Controls.Add(ramLabel);
 
             diskLabel = new Label
             {
                 AutoSize = true,
+                Location = new Point(4, 0),
                 BackColor = Color.Transparent,
                 TextAlign = ContentAlignment.MiddleLeft,
-                Padding = new Padding(0),
-                Margin = new Padding(0)
+                Padding = new Padding(0)
             };
             diskLabel.MouseDown += Form1_MouseDown;
-            panel.Controls.Add(diskLabel);
-
-            this.Controls.Add(panel);
+            this.Controls.Add(diskLabel);
         }
 
         private void Form1_MouseDown(object? sender, MouseEventArgs e)
@@ -319,15 +305,17 @@ namespace FloatingStatusMonitor
         {
             if (cpuLabel == null || ramLabel == null || diskLabel == null) return;
 
-            Color defaultColor = ColorTranslator.FromHtml(config.TextColor);
-
             cpuLabel.Text = $"CPU {cpu,4:F1}%";
             cpuLabel.ForeColor = GetColorForCpu(cpu);
+            cpuLabel.Location = new Point(4, 0);
 
             ramLabel.Text = $"|RAM {ram,4:F1}%";
+            ramLabel.ForeColor = GetColorForRamOrTemp(ram);
+            ramLabel.Location = new Point(cpuLabel.Right - 3, 0);
 
             diskLabel.Text = $"|DSK {disk,4:F1}%";
             diskLabel.ForeColor = GetColorForRamOrTemp(disk);
+            diskLabel.Location = new Point(ramLabel.Right - 3, 0);
 
             this.BackColor = ColorTranslator.FromHtml(config.BackColor);
             trayIcon.Text = $"CPU {cpu:F1}% | RAM {ram:F1}% | DSK {disk:F1}%";
