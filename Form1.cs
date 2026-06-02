@@ -19,7 +19,7 @@ namespace FloatingStatusMonitor
         public string TextColor { get; set; } = "#FFFFFF";
         public string BackColor { get; set; } = "#000000";
         public double Opacity { get; set; } = 0.8;
-        public int WindowWidth { get; set; } = 330;
+        public int WindowWidth { get; set; } = 248;
         public int WindowHeight { get; set; } = 24;
         public int WindowX { get; set; } = 690;
         public int WindowY { get; set; } = 4;
@@ -54,7 +54,9 @@ namespace FloatingStatusMonitor
         private Config config;
         private FileSystemWatcher watcher;
         private NotifyIcon trayIcon;
-        private Label? statusLabel;
+        private Label? cpuLabel;
+        private Label? ramLabel;
+        private Label? diskLabel;
         private PerformanceCounter? diskCounter;
         private bool windowVisible;
         private string exeDir = AppContext.BaseDirectory;
@@ -154,16 +156,52 @@ namespace FloatingStatusMonitor
 
         private void CreateLabels()
         {
-            statusLabel = new Label
+            FlowLayoutPanel panel = new FlowLayoutPanel
             {
-                AutoSize = false,
-                Size = new Size(320, 24),
+                FlowDirection = FlowDirection.LeftToRight,
                 Location = new Point(5, 0),
+                Size = new Size(240, 24),
                 BackColor = Color.Transparent,
-                TextAlign = ContentAlignment.MiddleLeft
+                Padding = new Padding(0),
+                Margin = new Padding(0),
+                WrapContents = false
             };
-            statusLabel.MouseDown += Form1_MouseDown;
-            this.Controls.Add(statusLabel);
+            panel.MouseDown += Form1_MouseDown;
+
+            cpuLabel = new Label
+            {
+                AutoSize = true,
+                BackColor = Color.Transparent,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Padding = new Padding(0),
+                Margin = new Padding(0)
+            };
+            cpuLabel.MouseDown += Form1_MouseDown;
+            panel.Controls.Add(cpuLabel);
+
+            ramLabel = new Label
+            {
+                AutoSize = true,
+                BackColor = Color.Transparent,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Padding = new Padding(0),
+                Margin = new Padding(0)
+            };
+            ramLabel.MouseDown += Form1_MouseDown;
+            panel.Controls.Add(ramLabel);
+
+            diskLabel = new Label
+            {
+                AutoSize = true,
+                BackColor = Color.Transparent,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Padding = new Padding(0),
+                Margin = new Padding(0)
+            };
+            diskLabel.MouseDown += Form1_MouseDown;
+            panel.Controls.Add(diskLabel);
+
+            this.Controls.Add(panel);
         }
 
         private void Form1_MouseDown(object? sender, MouseEventArgs e)
@@ -240,7 +278,16 @@ namespace FloatingStatusMonitor
             this.Location = new Point(config.WindowX, config.WindowY);
             this.BackColor = ColorTranslator.FromHtml(config.BackColor);
             
-            if (statusLabel != null) statusLabel.Font = font;
+            if (cpuLabel != null) cpuLabel.Font = font;
+            if (ramLabel != null) ramLabel.Font = font;
+            if (diskLabel != null) diskLabel.Font = font;
+        }
+
+        private Color GetColorForCpu(float value)
+        {
+            if (value >= 99) return ColorTranslator.FromHtml(config.CpuCriticalTextColor);
+            if (value > 95) return ColorTranslator.FromHtml(config.CpuHighTextColor);
+            return ColorTranslator.FromHtml(config.TextColor);
         }
 
         private Color GetColorForRamOrTemp(float value)
@@ -253,13 +300,6 @@ namespace FloatingStatusMonitor
             if (value >= 50) return ColorTranslator.FromHtml(config.RamTempColor50);
             if (value >= 30) return ColorTranslator.FromHtml(config.RamTempColor30);
             return ColorTranslator.FromHtml(config.RamTempColor0);
-        }
-
-        private Color GetBackgroundForRamOrTemp(float value)
-        {
-            if (value >= 99) return ColorTranslator.FromHtml(config.RamTempBgColor99);
-            if (value >= 98) return ColorTranslator.FromHtml(config.RamTempBgColor98);
-            return Color.Transparent;
         }
 
         private void UpdateStats(object? sender, EventArgs e)
@@ -277,29 +317,19 @@ namespace FloatingStatusMonitor
 
         private void UpdateUI(float cpu, float ram, float disk)
         {
-            string statusText = $"CPU {cpu,5:F1}%  | RAM {ram,5:F1}%  | DSK {disk,5:F1}%";
+            if (cpuLabel == null || ramLabel == null || diskLabel == null) return;
 
-            Color bgColor = ColorTranslator.FromHtml(config.BackColor);
-            Color textColor = ColorTranslator.FromHtml(config.TextColor);
+            Color defaultColor = ColorTranslator.FromHtml(config.TextColor);
 
-            if (cpu >= 99)
-            {
-                bgColor = ColorTranslator.FromHtml(config.CpuCriticalBgColor);
-                textColor = ColorTranslator.FromHtml(config.CpuCriticalTextColor);
-            }
-            else if (cpu > 95)
-            {
-                bgColor = ColorTranslator.FromHtml(config.CpuHighBgColor);
-                textColor = ColorTranslator.FromHtml(config.CpuHighTextColor);
-            }
+            cpuLabel.Text = $"CPU {cpu,4:F1}%";
+            cpuLabel.ForeColor = GetColorForCpu(cpu);
 
-            if (statusLabel != null)
-            {
-                statusLabel.Text = statusText;
-                statusLabel.ForeColor = textColor;
-            }
+            ramLabel.Text = $"|RAM {ram,4:F1}%";
 
-            this.BackColor = bgColor;
+            diskLabel.Text = $"|DSK {disk,4:F1}%";
+            diskLabel.ForeColor = GetColorForRamOrTemp(disk);
+
+            this.BackColor = ColorTranslator.FromHtml(config.BackColor);
             trayIcon.Text = $"CPU {cpu:F1}% | RAM {ram:F1}% | DSK {disk:F1}%";
         }
 
