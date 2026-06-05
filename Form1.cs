@@ -260,13 +260,15 @@ namespace FloatingStatusMonitor
             var font = new Font(config.FontName, config.FontSize);
             this.Font = font;
             this.Opacity = config.Opacity;
-            this.Size = new Size(config.WindowWidth, config.WindowHeight);
             this.Location = new Point(config.WindowX, config.WindowY);
             this.BackColor = ColorTranslator.FromHtml(config.BackColor);
-            
+
             if (cpuLabel != null) cpuLabel.Font = font;
             if (ramLabel != null) ramLabel.Font = font;
             if (diskLabel != null) diskLabel.Font = font;
+
+            int textHeight = TextRenderer.MeasureText("Ag", font).Height;
+            this.Size = new Size(config.WindowWidth, textHeight + 2);
         }
 
         private Color GetColorForCpu(float value)
