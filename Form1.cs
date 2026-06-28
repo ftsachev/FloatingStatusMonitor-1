@@ -82,12 +82,12 @@ namespace FloatingStatusMonitor
                     Math.Max(0, Math.Min(this.Location.X, screen.Width - this.Width)),
                     Math.Max(0, Math.Min(this.Location.Y, screen.Height - this.Height))
                 );
-                // Start hidden in tray after form handle is created
-                windowVisible = false;
-                this.WindowState = FormWindowState.Minimized;
+                // The status bar is the primary UI. Keep it visible while remaining
+                // absent from the taskbar; the tray icon can still hide it on demand.
+                windowVisible = true;
+                this.WindowState = FormWindowState.Normal;
                 this.ShowInTaskbar = false;
-                this.Hide();
-                trayIcon.ShowBalloonTip(2000, "Floating Status Monitor", "Running in system tray — left-click to show window", ToolTipIcon.Info);
+                (trayIcon!.ContextMenuStrip!.Items[0] as ToolStripMenuItem)!.Text = "Hide Window";
             };
 
             config = LoadConfigFromDisk();
@@ -132,7 +132,7 @@ namespace FloatingStatusMonitor
             updateTimer.Tick += UpdateStats;
             updateTimer.Start();
 
-            watcher = new FileSystemWatcher(".", ConfigPath)
+            watcher = new FileSystemWatcher(exeDir, Path.GetFileName(ConfigPath))
             {
                 NotifyFilter = NotifyFilters.LastWrite,
                 EnableRaisingEvents = true
@@ -338,14 +338,14 @@ namespace FloatingStatusMonitor
                 this.WindowState = FormWindowState.Normal;
                 this.Show();
                 this.BringToFront();
-                (trayIcon.ContextMenuStrip.Items[0] as ToolStripMenuItem).Text = "Hide Window";
+                (trayIcon.ContextMenuStrip!.Items[0] as ToolStripMenuItem)!.Text = "Hide Window";
             }
             else
             {
                 this.WindowState = FormWindowState.Minimized;
                 this.ShowInTaskbar = false;
                 this.Hide();
-                (trayIcon.ContextMenuStrip.Items[0] as ToolStripMenuItem).Text = "Show Window";
+                (trayIcon.ContextMenuStrip!.Items[0] as ToolStripMenuItem)!.Text = "Show Window";
             }
         }
 
@@ -424,10 +424,15 @@ namespace FloatingStatusMonitor
         {
             try
             {
-                config.WindowX = this.Location.X;
-                config.WindowY = this.Location.Y;
-                config.WindowWidth = this.Size.Width;
-                config.WindowHeight = this.Size.Height;
+                // A minimized WinForms window reports sentinel coordinates such as
+                // -32000. Preserve the last visible geometry instead of persisting it.
+                if (windowVisible && this.WindowState == FormWindowState.Normal)
+                {
+                    config.WindowX = this.Location.X;
+                    config.WindowY = this.Location.Y;
+                    config.WindowWidth = this.Size.Width;
+                    config.WindowHeight = this.Size.Height;
+                }
 
                 JObject jObj;
                 if (File.Exists(ConfigPath))
@@ -461,9 +466,18 @@ namespace FloatingStatusMonitor
         [STAThread]
         public static void Main()
         {
+            using var instanceMutex = new System.Threading.Mutex(
+                initiallyOwned: true,
+                name: @"Local\FloatingStatusMonitor",
+                createdNew: out bool createdNew);
+
+            if (!createdNew)
+                return;
+
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new Form1());
+            GC.KeepAlive(instanceMutex);
         }
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]

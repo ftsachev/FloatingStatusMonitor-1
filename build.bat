@@ -47,10 +47,10 @@ if errorlevel 1 (
 )
 
 :: show
-set "OUT_DIR=bin\Release\net7.0\win-x64\publish"
-if exist "%OUT_DIR%\ProcessMemoryViewer.exe" (
+set "OUT_DIR=bin\Release\net6.0-windows\win-x64\publish"
+if exist "%OUT_DIR%\FloatingStatusMonitor.exe" (
     echo.
-    echo [✅] Publish successfull: %OUT_DIR%\ProcessMemoryViewer.exe
+    echo [✅] Publish successfull: %OUT_DIR%\FloatingStatusMonitor.exe
     explorer "%OUT_DIR%"
 ) else (
     echo [❌] File EXE NOT Found !
