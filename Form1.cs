@@ -54,9 +54,7 @@ namespace FloatingStatusMonitor
         private Config config;
         private FileSystemWatcher watcher;
         private NotifyIcon trayIcon;
-        private Label? cpuLabel;
-        private Label? ramLabel;
-        private Label? diskLabel;
+        private Label? statsLabel;
         private PerformanceCounter? diskCounter;
         private bool windowVisible;
         private string exeDir = AppContext.BaseDirectory;
@@ -96,6 +94,7 @@ namespace FloatingStatusMonitor
             this.TopMost = true;
             this.DoubleBuffered = true;
             this.KeyPreview = true;
+            this.Padding = new Padding(0);
             this.BackColor = Color.Black;
             this.TransparencyKey = Color.Magenta;
             this.MouseDown += Form1_MouseDown;
@@ -156,38 +155,17 @@ namespace FloatingStatusMonitor
 
         private void CreateLabels()
         {
-            cpuLabel = new Label
+            statsLabel = new Label
             {
-                AutoSize = true,
-                Location = new Point(4, 0),
+                AutoSize = false,
+                Dock = DockStyle.Fill,
                 BackColor = Color.Transparent,
                 TextAlign = ContentAlignment.MiddleLeft,
-                Padding = new Padding(0)
+                Padding = new Padding(2, 0, 0, 0),
+                Margin = new Padding(0)
             };
-            cpuLabel.MouseDown += Form1_MouseDown;
-            this.Controls.Add(cpuLabel);
-
-            ramLabel = new Label
-            {
-                AutoSize = true,
-                Location = new Point(4, 0),
-                BackColor = Color.Transparent,
-                TextAlign = ContentAlignment.MiddleLeft,
-                Padding = new Padding(0)
-            };
-            ramLabel.MouseDown += Form1_MouseDown;
-            this.Controls.Add(ramLabel);
-
-            diskLabel = new Label
-            {
-                AutoSize = true,
-                Location = new Point(4, 0),
-                BackColor = Color.Transparent,
-                TextAlign = ContentAlignment.MiddleLeft,
-                Padding = new Padding(0)
-            };
-            diskLabel.MouseDown += Form1_MouseDown;
-            this.Controls.Add(diskLabel);
+            statsLabel.MouseDown += Form1_MouseDown;
+            this.Controls.Add(statsLabel);
         }
 
         private void Form1_MouseDown(object? sender, MouseEventArgs e)
@@ -263,12 +241,19 @@ namespace FloatingStatusMonitor
             this.Location = new Point(config.WindowX, config.WindowY);
             this.BackColor = ColorTranslator.FromHtml(config.BackColor);
 
-            if (cpuLabel != null) cpuLabel.Font = font;
-            if (ramLabel != null) ramLabel.Font = font;
-            if (diskLabel != null) diskLabel.Font = font;
+            if (statsLabel != null) statsLabel.Font = font;
 
-            int textHeight = TextRenderer.MeasureText("Ag", font).Height;
-            this.Size = new Size(config.WindowWidth, textHeight + 2);
+            FitToText();
+        }
+
+        private void FitToText()
+        {
+            if (statsLabel == null) return;
+            var textSize = TextRenderer.MeasureText(statsLabel.Text, statsLabel.Font);
+            int w = textSize.Width + statsLabel.Padding.Left + 6;
+            int h = textSize.Height;
+            this.Size = new Size(w, h);
+            statsLabel.Size = new Size(w, h);
         }
 
         private Color GetColorForCpu(float value)
@@ -305,22 +290,32 @@ namespace FloatingStatusMonitor
 
         private void UpdateUI(float cpu, float ram, float disk)
         {
-            if (cpuLabel == null || ramLabel == null || diskLabel == null) return;
+            if (statsLabel == null) return;
 
-            cpuLabel.Text = $"CPU {cpu,4:F1}%";
-            cpuLabel.ForeColor = GetColorForCpu(cpu);
-            cpuLabel.Location = new Point(4, 0);
+            statsLabel.Text = $"C:{cpu:F0}% R:{ram:F0}% D:{disk:F0}%";
+            FitToText();
 
-            ramLabel.Text = $"|RAM {ram,4:F1}%";
-            ramLabel.ForeColor = GetColorForRamOrTemp(ram);
-            ramLabel.Location = new Point(cpuLabel.Right - 3, 0);
+            // Use highest-alert color for the whole label
+            Color cpuColor = GetColorForCpu(cpu);
+            Color ramColor = GetColorForRamOrTemp(ram);
+            Color diskColor = GetColorForRamOrTemp(disk);
 
-            diskLabel.Text = $"|DSK {disk,4:F1}%";
-            diskLabel.ForeColor = GetColorForRamOrTemp(disk);
-            diskLabel.Location = new Point(ramLabel.Right - 3, 0);
+            // Pick the most "urgent" color (red > blue > the rest)
+            statsLabel.ForeColor = GetMostUrgentColor(cpuColor, ramColor, diskColor);
 
             this.BackColor = ColorTranslator.FromHtml(config.BackColor);
             trayIcon.Text = $"CPU {cpu:F1}% | RAM {ram:F1}% | DSK {disk:F1}%";
+        }
+
+        private static Color GetMostUrgentColor(params Color[] colors)
+        {
+            Color result = colors[0];
+            foreach (var c in colors)
+            {
+                if (c.R > result.R || (c.R == result.R && c.G < result.G))
+                    result = c;
+            }
+            return result;
         }
 
         private void ToggleWindow()
