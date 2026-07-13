@@ -164,6 +164,9 @@ namespace FloatingStatusMonitor
                 Padding = new Padding(2, 0, 0, 0),
                 Margin = new Padding(0)
             };
+            statsLabel.ForeColor = Color.White;
+            statsLabel.Text = "Starting...";
+
             statsLabel.MouseDown += Form1_MouseDown;
             this.Controls.Add(statsLabel);
         }
@@ -239,11 +242,14 @@ namespace FloatingStatusMonitor
             this.Font = font;
             this.Opacity = config.Opacity;
             this.Location = new Point(config.WindowX, config.WindowY);
+
+            // Set initial window size from config
+            this.Size = new Size(config.WindowWidth, config.WindowHeight);
             this.BackColor = ColorTranslator.FromHtml(config.BackColor);
 
             if (statsLabel != null) statsLabel.Font = font;
 
-            FitToText();
+            // Don't call FitToText() here - text is still empty (called after first UpdateStats)
         }
 
         private void FitToText()
@@ -280,11 +286,18 @@ namespace FloatingStatusMonitor
             // Read stats on background thread so UI stays responsive
             Task.Run(() =>
             {
-                float cpu = GetCpuUsage();
-                float ram = GetRamViaGlobalMemoryStatusEx();
-                float disk = GetDiskActivity();
-                
-                this.Invoke((Action)(() => UpdateUI(cpu, ram, disk)));
+                try
+                {
+                    float cpu = GetCpuUsage();
+                    float ram = GetRamViaGlobalMemoryStatusEx();
+                    float disk = GetDiskActivity();
+
+                    this.Invoke((Action)(() => UpdateUI(cpu, ram, disk)));
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine("UpdateStats error: " + ex.Message);
+                }
             });
         }
 
@@ -364,10 +377,18 @@ namespace FloatingStatusMonitor
 
         private float GetCpuUsage()
         {
-            using var cpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
-            cpuCounter.NextValue();
-            System.Threading.Thread.Sleep(250);
-            return cpuCounter.NextValue();
+            try
+            {
+                using var cpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
+                cpuCounter.NextValue();
+                System.Threading.Thread.Sleep(250);
+                return cpuCounter.NextValue();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("GetCpuUsage error: " + ex.Message);
+                return 0;
+            }
         }
 
         private float GetMemoryUsage()
