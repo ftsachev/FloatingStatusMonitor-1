@@ -99,6 +99,7 @@ namespace FloatingStatusMonitor
             this.TransparencyKey = Color.Magenta;
             this.MouseDown += Form1_MouseDown;
             this.KeyDown += Form1_KeyDown;
+            this.Resize += Form1_Resize;
 
             CreateLabels();
 
@@ -177,6 +178,16 @@ namespace FloatingStatusMonitor
             {
                 ReleaseCapture();
                 SendMessage(this.Handle, WM_NCLBUTTONDOWN, HT_CAPTION, 0);
+            }
+        }
+
+        private void Form1_Resize(object? sender, EventArgs e)
+        {
+            if (this.WindowState == FormWindowState.Minimized)
+            {
+                windowVisible = false;
+                this.Hide();
+                (trayIcon.ContextMenuStrip!.Items[0] as ToolStripMenuItem)!.Text = "Show Window";
             }
         }
 
@@ -336,22 +347,14 @@ namespace FloatingStatusMonitor
             windowVisible = !windowVisible;
             if (windowVisible)
             {
-                // Clamp window to screen bounds
-                var screen = Screen.GetWorkingArea(this);
-                this.Location = new Point(
-                    Math.Max(0, Math.Min(this.Location.X, screen.Width - this.Width)),
-                    Math.Max(0, Math.Min(this.Location.Y, screen.Height - this.Height))
-                );
-
                 this.WindowState = FormWindowState.Normal;
+                this.ShowInTaskbar = false;
                 this.Show();
                 this.BringToFront();
                 (trayIcon.ContextMenuStrip!.Items[0] as ToolStripMenuItem)!.Text = "Hide Window";
             }
             else
             {
-                this.WindowState = FormWindowState.Minimized;
-                this.ShowInTaskbar = false;
                 this.Hide();
                 (trayIcon.ContextMenuStrip!.Items[0] as ToolStripMenuItem)!.Text = "Show Window";
             }
