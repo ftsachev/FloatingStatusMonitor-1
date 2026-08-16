@@ -170,6 +170,7 @@ namespace FloatingStatusMonitor
 
             statsLabel.MouseDown += Form1_MouseDown;
             this.Controls.Add(statsLabel);
+            ForceWhiteTextColor();
         }
 
         private void Form1_MouseDown(object? sender, MouseEventArgs e)
@@ -319,13 +320,8 @@ namespace FloatingStatusMonitor
             statsLabel.Text = $"C:{cpu:F0}% R:{ram:F0}% D:{disk:F0}%";
             FitToText();
 
-            // Use highest-alert color for the whole label
-            Color cpuColor = GetColorForCpu(cpu);
-            Color ramColor = GetColorForRamOrTemp(ram);
-            Color diskColor = GetColorForRamOrTemp(disk);
-
-            // Pick the most "urgent" color (red > blue > the rest)
-            statsLabel.ForeColor = GetMostUrgentColor(cpuColor, ramColor, diskColor);
+            // Force white text color to stay constant - override any urgent colors
+            statsLabel.ForeColor = Color.White;
 
             this.BackColor = ColorTranslator.FromHtml(config.BackColor);
             trayIcon.Text = $"CPU {cpu:F1}% | RAM {ram:F1}% | DSK {disk:F1}%";
@@ -340,6 +336,14 @@ namespace FloatingStatusMonitor
                     result = c;
             }
             return result;
+        }
+
+        private void ForceWhiteTextColor()
+        {
+            if (statsLabel != null)
+            {
+                statsLabel.ForeColor = Color.White;
+            }
         }
 
         private void ToggleWindow()
