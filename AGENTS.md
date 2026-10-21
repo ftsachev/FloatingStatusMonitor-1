@@ -1,4 +1,4 @@
-# Floating Status Monitor — Agent Rules
+# Floating Status Monitor - Agent Rules
 
 A lightweight Windows desktop application that displays real-time CPU usage,
 memory usage, and CPU temperature in a floating transparent window. See
@@ -14,5 +14,5 @@ memory usage, and CPU temperature in a floating transparent window. See
 ## Notes
 
 This is a standalone project (not part of the inflight ecosystem). Changes
-should be minimal and focused — primarily layout fixes, configuration options,
+should be minimal and focused - primarily layout fixes, configuration options,
 and error handling.
