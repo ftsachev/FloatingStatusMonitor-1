@@ -85,6 +85,8 @@ namespace FloatingStatusMonitor
                 windowVisible = true;
                 this.WindowState = FormWindowState.Normal;
                 this.ShowInTaskbar = false;
+                this.Show();
+                this.BringToFront();
                 (trayIcon!.ContextMenuStrip!.Items[0] as ToolStripMenuItem)!.Text = "Hide Window";
             };
 
